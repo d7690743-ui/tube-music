@@ -386,16 +386,19 @@ class MainActivity : Activity() {
                 if (audios.isEmpty()) throw Exception("Sin streams de audio")
                 val title = item.name ?: "audio"
                 runOnUiThread {
-                    FormatPicker.show(this, title, audios) { chosen, fellBack ->
-                        if (fellBack) {
-                            Toast.makeText(
-                                this,
-                                "Sin MP3 en YouTube, guardo en ${chosen.format?.suffix ?: "original"}",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                        doDownload(title, chosen)
-                    }
+                    FormatPicker.show(
+                        this, title, audios,
+                        onPick = { chosen, fellBack ->
+                            if (fellBack) {
+                                Toast.makeText(
+                                    this,
+                                    "Sin MP3 en YouTube, guardo en ${chosen.format?.suffix ?: "original"}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            doDownload(title, chosen)
+                        },
+                    )
                 }
             } catch (e: Exception) {
                 runOnUiThread { statusText.text = "Error: ${e.message}" }
