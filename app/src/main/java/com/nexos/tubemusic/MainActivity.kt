@@ -135,7 +135,7 @@ class MainActivity : Activity() {
 
     private fun pickFormatDialog(title: String, audios: List<AudioStream>) {
         val labels = audios.map {
-            "${it.format.name} • ${it.averageBitrate / 1000} kbps"
+            "${it.format?.name ?: "?"} • ${it.averageBitrate / 1000} kbps"
         }.toTypedArray()
         var elegido = 0
         AlertDialog.Builder(this)
@@ -153,7 +153,7 @@ class MainActivity : Activity() {
         Thread {
             try {
                 val ruta = MusicDownload.download(
-                    this, audio.url, title, audio.format.suffix
+                    this, audio.url, title, audio.format?.suffix ?: "m4a"
                 ) { p -> runOnUiThread { progressBar.progress = p } }
                 runOnUiThread {
                     statusText.text = "Guardado en $ruta"
