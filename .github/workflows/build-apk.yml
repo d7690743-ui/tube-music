@@ -17,6 +17,8 @@ jobs:
         uses: android-actions/setup-android@v4
       - name: Make gradlew executable
         run: chmod +x gradlew
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
       - name: Build Debug APK
         run: ./gradlew assembleDebug
       - name: Upload APK

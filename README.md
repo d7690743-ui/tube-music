@@ -5,9 +5,14 @@ sin dependencias salvo NewPipeExtractor.
 
 ## Uso
 
-1. Busca canción o artista.
-2. Toca un resultado y elige formato/calidad.
-3. Se guarda en `Music/TubeMusic/`.
+1. Busca canción o artista (resultados con carátula y duración).
+2. Toca un resultado para reproducirlo en streaming.
+3. Con ⬇ lo descargas a `Music/TubeMusic/`.
+4. La pestaña Biblioteca lista tus descargas para oírlas sin red.
+
+Reproductor estilo Spotify: mini player, pantalla completa con seek,
+cola siguiente/anterior, y servicio en segundo plano con notificación
+(funciona con la pantalla apagada).
 
 ## Cómo funciona
 
@@ -19,10 +24,10 @@ sin dependencias salvo NewPipeExtractor.
 Cada push a `main` compila el APK debug en GitHub Actions
 (artefacto `tubemusic-debug`).
 
-## Límites de v1
+## Límites actuales
 
 - Descargas en primer plano (si cierras la app se cancelan).
-- Sin listas de reproducción ni cola de descargas.
+- Sin listas de reproducción guardadas ni cola de descargas.
 - Si YouTube cambia algo y deja de funcionar, hay que actualizar la
   versión de NewPipeExtractor y recompilar.
 
