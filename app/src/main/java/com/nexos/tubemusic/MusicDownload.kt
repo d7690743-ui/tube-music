@@ -73,6 +73,25 @@ object MusicDownload {
         }
     }
 
+    /** Descarga una URL a un archivo directo (caché). Para convertir después. */
+    @Throws(Exception::class)
+    fun downloadToFile(url: String, dest: File, onProgress: (Int) -> Unit) {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 60_000
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", TubeDownloader.UA)
+        }
+        try {
+            if (conn.responseCode !in 200..299) throw Exception("HTTP ${conn.responseCode}")
+            FileOutputStream(dest).use { out ->
+                conn.inputStream.use { input -> copy(input, out, conn.contentLengthLong, onProgress) }
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private fun copy(input: InputStream, out: OutputStream, total: Long, onProgress: (Int) -> Unit) {
         val buf = ByteArray(64 * 1024)
         var done = 0L

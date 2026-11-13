@@ -7,7 +7,7 @@ import org.schabi.newpipe.extractor.stream.AudioStream
 
 /**
  * Diálogo de formato con opción MP3 primero.
- * Llama onPick(streamElegido, cayoAOtroFormato). Lista vacía: no hace nada.
+ * Llama onPick(streamElegido, necesitaConversion). Lista vacía: no hace nada.
  */
 object FormatPicker {
 
@@ -21,7 +21,7 @@ object FormatPicker {
         if (audios.isEmpty()) return
         val suffixes = audios.map { it.format?.suffix ?: "m4a" }
         val bitrates = audios.map { it.averageBitrate }
-        val labels = mutableListOf("MP3 (si YouTube lo ofrece)")
+        val labels = mutableListOf("MP3 (convierte si hace falta)")
         labels.addAll(audios.map { "${it.format?.name ?: "?"} • ${it.averageBitrate / 1000} kbps" })
         var elegido = 0
         AlertDialog.Builder(activity)
@@ -30,7 +30,7 @@ object FormatPicker {
             .setPositiveButton("Descargar") { _, _ ->
                 if (elegido == 0) {
                     val idx = AudioPick.pickIndex(suffixes, bitrates, true).coerceAtLeast(0)
-                    onPick(audios[idx], AudioPick.fellBack(suffixes, true))
+                    onPick(audios[idx], !AudioPick.isMp3(suffixes[idx]))
                 } else {
                     onPick(audios[elegido - 1], false)
                 }

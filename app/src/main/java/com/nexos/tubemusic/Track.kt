@@ -11,6 +11,8 @@ data class Track(
     val pageUrl: String? = null,
     /** Uri content:// o ruta de archivo cuando es local, null si es stream. */
     val local: String? = null,
+    /** Extensión real en biblioteca (mp3, m4a…), null si se desconoce. */
+    val suffix: String? = null,
 ) : Serializable
 
 /** 187000 ms -> "3:07". */

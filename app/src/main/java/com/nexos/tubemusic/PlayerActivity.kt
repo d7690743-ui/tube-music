@@ -137,7 +137,9 @@ class PlayerActivity : Activity() {
                 runOnUiThread {
                     FormatPicker.show(
                         this, title, audios,
-                        onPick = { chosen, fellBack -> downloadPicked(title, chosen, fellBack) },
+                        onPick = { chosen, needsConvert ->
+                            downloadPicked(title, chosen, needsConvert)
+                        },
                         onCancel = { downloadButton.isEnabled = true },
                     )
                 }
@@ -150,16 +152,13 @@ class PlayerActivity : Activity() {
         }.start()
     }
 
-    private fun downloadPicked(title: String, audio: AudioStream, fellBack: Boolean) {
-        if (fellBack) {
-            Toast.makeText(
-                this,
-                "Sin MP3 en YouTube, guardo en ${audio.format?.suffix ?: "original"}",
-                Toast.LENGTH_LONG
-            ).show()
-        } else {
-            Toast.makeText(this, "Descargando...", Toast.LENGTH_SHORT).show()
+    private fun downloadPicked(title: String, audio: AudioStream, needsConvert: Boolean) {
+        if (needsConvert) {
+            Toast.makeText(this, "Descargo y convierto a MP3…", Toast.LENGTH_SHORT).show()
+            downloadAsMp3(title, audio)
+            return
         }
+        Toast.makeText(this, "Descargando...", Toast.LENGTH_SHORT).show()
         val jobId = DownloadStore.start(title)
         Thread {
             try {
@@ -172,6 +171,32 @@ class PlayerActivity : Activity() {
                 DownloadStore.finish(jobId, ruta)
                 runOnUiThread {
                     Toast.makeText(this, "Guardado en $ruta", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                DownloadStore.fail(jobId, e.message ?: "error")
+                runOnUiThread {
+                    Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                runOnUiThread { downloadButton.isEnabled = true }
+            }
+        }.start()
+    }
+
+    private fun downloadAsMp3(title: String, audio: AudioStream) {
+        val jobId = DownloadStore.start(title)
+        Thread {
+            try {
+                val ruta = Mp3Convert.downloadAsMp3(
+                    this,
+                    audio.url ?: throw Exception("Sin URL"),
+                    title,
+                    PlayerBus.artist,
+                    jobId
+                )
+                DownloadStore.finish(jobId, ruta)
+                runOnUiThread {
+                    Toast.makeText(this, "MP3 listo en Music/TubeMusic", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 DownloadStore.fail(jobId, e.message ?: "error")

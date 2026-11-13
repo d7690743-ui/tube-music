@@ -3,9 +3,11 @@ package com.nexos.tubemusic
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -14,6 +16,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
 import android.widget.BaseAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -144,6 +147,11 @@ class MainActivity : Activity() {
             onDownload = null,
         )
         libraryList.adapter = libAdapter
+        libraryList.onItemLongClickListener =
+            AdapterView.OnItemLongClickListener { _, _, pos, _ ->
+                showLibraryMenu(pos)
+                true
+            }
         downloadsAdapter = TrackRowAdapter(this, mutableListOf(), onTap = {}, onDownload = null)
         downloadsList.adapter = downloadsAdapter
 
@@ -276,7 +284,7 @@ class MainActivity : Activity() {
                         MediaStore.Audio.Media._ID,
                         MediaStore.Audio.Media.TITLE,
                         MediaStore.Audio.Media.ARTIST,
-                        MediaStore.Audio.Media.DURATION,
+                        MediaStore.Audio.Media.DISPLAY_NAME,
                     )
                     contentResolver.query(
                         uri, proj,
@@ -287,8 +295,9 @@ class MainActivity : Activity() {
                         val idI = c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
                         val tI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
                         val aI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-                        val dI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+                        val nI = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
                         while (c.moveToNext()) {
+                            val display = c.getString(nI) ?: ""
                             list.add(
                                 Track(
                                     title = c.getString(tI) ?: "Sin título",
@@ -296,6 +305,8 @@ class MainActivity : Activity() {
                                     local = ContentUris.withAppendedId(
                                         uri, c.getLong(idI)
                                     ).toString(),
+                                    suffix = display.substringAfterLast('.', "").lowercase()
+                                        .ifEmpty { null },
                                 )
                             )
                         }
@@ -317,7 +328,8 @@ class MainActivity : Activity() {
                                 Track(
                                     title = it.nameWithoutExtension,
                                     artist = "Descargado",
-                                    local = it.absolutePath
+                                    local = it.absolutePath,
+                                    suffix = it.extension.lowercase().ifEmpty { null },
                                 )
                             )
                         }
@@ -326,7 +338,8 @@ class MainActivity : Activity() {
                     libTracks.clear()
                     libTracks.addAll(list)
                     libAdapter.refresh(list.map {
-                        TrackRowAdapter.Row(it.title, it.artist, null, false)
+                        val sub = if (it.suffix != null) "${it.artist} • ${it.suffix}" else it.artist
+                        TrackRowAdapter.Row(it.title, sub, null, false)
                     })
                     statusText.text = if (list.isEmpty()) {
                         "Biblioteca vacía. Descarga algo con ⬇."
@@ -388,15 +401,13 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     FormatPicker.show(
                         this, title, audios,
-                        onPick = { chosen, fellBack ->
-                            if (fellBack) {
-                                Toast.makeText(
-                                    this,
-                                    "Sin MP3 en YouTube, guardo en ${chosen.format?.suffix ?: "original"}",
-                                    Toast.LENGTH_LONG
-                                ).show()
+                        onPick = { chosen, needsConvert ->
+                            if (needsConvert) {
+                                Toast.makeText(this, "Descargo y convierto a MP3…", Toast.LENGTH_SHORT).show()
+                                doDownloadMp3(title, item.uploaderName ?: "?", chosen)
+                            } else {
+                                doDownload(title, chosen)
                             }
-                            doDownload(title, chosen)
                         },
                     )
                 }
@@ -432,6 +443,102 @@ class MainActivity : Activity() {
                 runOnUiThread { searchButton.isEnabled = true }
             }
         }.start()
+    }
+
+    private fun doDownloadMp3(title: String, artist: String, audio: AudioStream) {
+        searchButton.isEnabled = false
+        statusText.text = "Descargando: $title"
+        val jobId = DownloadStore.start(title)
+        setTab(TAB_DOWNLOADS)
+        Thread {
+            try {
+                val streamUrl = audio.url ?: throw Exception("Stream sin URL directa")
+                val ruta = Mp3Convert.downloadAsMp3(this, streamUrl, title, artist, jobId)
+                DownloadStore.finish(jobId, ruta)
+                runOnUiThread {
+                    statusText.text = "Guardado en $ruta"
+                    Toast.makeText(this, "MP3 listo", Toast.LENGTH_SHORT).show()
+                    refreshDownloads()
+                }
+            } catch (e: Exception) {
+                DownloadStore.fail(jobId, e.message ?: "error")
+                runOnUiThread { statusText.text = "Error: ${e.message}" }
+            } finally {
+                runOnUiThread { searchButton.isEnabled = true }
+            }
+        }.start()
+    }
+
+    // ---- menú biblioteca ----
+
+    private fun showLibraryMenu(pos: Int) {
+        if (pos !in libTracks.indices) return
+        val t = libTracks[pos]
+        val opts = mutableListOf("Reproducir", "Eliminar")
+        if (t.suffix?.lowercase() != "mp3") opts.add(1, "Convertir a MP3")
+        AlertDialog.Builder(this)
+            .setTitle(t.title)
+            .setItems(opts.toTypedArray()) { _, which ->
+                when (opts[which]) {
+                    "Reproducir" -> playLibrary(pos)
+                    "Convertir a MP3" -> convertLibraryTrack(t)
+                    "Eliminar" -> deleteTrack(pos)
+                }
+            }
+            .show()
+    }
+
+    private fun convertLibraryTrack(t: Track) {
+        val local = t.local ?: return
+        val jobId = DownloadStore.start(t.title)
+        DownloadStore.note(jobId, "convirtiendo a MP3…")
+        statusText.text = "Convirtiendo: ${t.title}"
+        setTab(TAB_DOWNLOADS)
+        Thread {
+            try {
+                val ruta = Mp3Convert.convertLocal(this, local, t.title, t.artist)
+                DownloadStore.finish(jobId, ruta)
+                runOnUiThread {
+                    statusText.text = "Guardado en $ruta"
+                    Toast.makeText(this, "MP3 listo", Toast.LENGTH_SHORT).show()
+                    refreshDownloads()
+                }
+            } catch (e: Exception) {
+                DownloadStore.fail(jobId, e.message ?: "error")
+                runOnUiThread { statusText.text = "Error: ${e.message}" }
+            }
+        }.start()
+    }
+
+    private fun deleteTrack(pos: Int) {
+        if (pos !in libTracks.indices) return
+        val t = libTracks[pos]
+        AlertDialog.Builder(this)
+            .setTitle("Eliminar")
+            .setMessage("¿Borrar \"${t.title}\" de Descargas?")
+            .setPositiveButton("Borrar") { _, _ ->
+                Thread {
+                    try {
+                        val local = t.local ?: throw Exception("Sin archivo")
+                        if (local.startsWith("content://")) {
+                            val n = contentResolver.delete(Uri.parse(local), null, null)
+                            if (n <= 0) throw Exception("No se pudo borrar")
+                        } else {
+                            if (!File(local).delete()) throw Exception("No se pudo borrar")
+                        }
+                        runOnUiThread {
+                            Toast.makeText(this, "Eliminado", Toast.LENGTH_SHORT).show()
+                            loadLibrary()
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }.start()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     // ---- descargas ----

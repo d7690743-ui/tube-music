@@ -37,6 +37,12 @@ object DownloadStore {
     }
 
     @Synchronized
+    fun note(id: Long, msg: String) {
+        val i = jobs.indexOfFirst { it.id == id }
+        if (i >= 0) jobs[i] = jobs[i].copy(detail = msg)
+    }
+
+    @Synchronized
     fun finish(id: Long, path: String) {
         val i = jobs.indexOfFirst { it.id == id }
         if (i >= 0) jobs[i] = jobs[i].copy(progress = 100, state = State.DONE, detail = path)

@@ -2,6 +2,7 @@
 package com.nexos.tubemusic
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Pruebas unitarias de logica pura (sin Android): nombres de archivo y duraciones. */
@@ -89,5 +90,35 @@ class LogicTest {
         assertEquals("b", jobs[0].title)
         assertEquals(DownloadStore.State.ERROR, jobs[1].state)
         assertEquals("red", jobs[1].detail)
+    }
+
+    @Test
+    fun mp3Command_incluyeLameYMetadatos() {
+        val cmd = Mp3Convert.buildCommand("/c/in.m4a", "/c/out.mp3", "Mi rola", "Artista")
+        assertTrue(cmd.contains("libmp3lame"))
+        assertTrue(cmd.contains("192k"))
+        assertTrue(cmd.contains("Mi rola") && cmd.contains("Artista"))
+        assertTrue(cmd.contains("/c/in.m4a") && cmd.contains("/c/out.mp3"))
+    }
+
+    @Test
+    fun mp3Command_escapaComillas() {
+        val cmd = Mp3Convert.buildCommand("/c/a'b.m4a", "/c/o.mp3", "t", "a")
+        assertTrue(!cmd.contains("a'b.m4a"))
+    }
+
+    @Test
+    fun mp3Name_sanitiza() {
+        assertEquals("a_b.mp3", Mp3Convert.mp3Name("a/b"))
+    }
+
+    @Test
+    fun store_noteActualizaDetalle() {
+        DownloadStore.clear()
+        val id = DownloadStore.start("x")
+        DownloadStore.note(id, "convirtiendo a MP3")
+        val jobs = DownloadStore.snapshot()
+        assertEquals("convirtiendo a MP3", jobs[0].detail)
+        assertEquals(DownloadStore.State.ACTIVE, jobs[0].state)
     }
 }
