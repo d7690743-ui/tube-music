@@ -3,7 +3,6 @@ package com.nexos.tubemusic
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -69,10 +68,14 @@ class MainActivity : Activity() {
     private lateinit var searchButton: Button
     private lateinit var tabSearch: Button
     private lateinit var tabLibrary: Button
+    private lateinit var tabDownloads: Button
+    private lateinit var tabPlayer: Button
     private lateinit var panelSearch: LinearLayout
     private lateinit var panelLibrary: LinearLayout
+    private lateinit var panelDownloads: LinearLayout
     private lateinit var resultsList: ListView
     private lateinit var libraryList: ListView
+    private lateinit var downloadsList: ListView
     private lateinit var searchLoading: ProgressBar
     private lateinit var statusText: TextView
     private lateinit var mini: LinearLayout
@@ -85,7 +88,8 @@ class MainActivity : Activity() {
     private lateinit var resultsAdapter: TrackRowAdapter
     private val libTracks = mutableListOf<Track>()
     private lateinit var libAdapter: TrackRowAdapter
-    private var onLibrary = false
+    private lateinit var downloadsAdapter: TrackRowAdapter
+    private var tab = TAB_SEARCH
     private var alive = true
     private var lastMiniVersion = -1L
     private val ui = Handler(Looper.getMainLooper())
@@ -93,8 +97,15 @@ class MainActivity : Activity() {
         override fun run() {
             if (!alive) return
             refreshMini()
+            if (tab == TAB_DOWNLOADS) refreshDownloads()
             ui.postDelayed(this, 500)
         }
+    }
+
+    companion object {
+        const val TAB_SEARCH = 0
+        const val TAB_LIBRARY = 1
+        const val TAB_DOWNLOADS = 2
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -105,10 +116,14 @@ class MainActivity : Activity() {
         searchButton = findViewById(R.id.search)
         tabSearch = findViewById(R.id.tab_search)
         tabLibrary = findViewById(R.id.tab_library)
+        tabDownloads = findViewById(R.id.tab_downloads)
+        tabPlayer = findViewById(R.id.tab_player)
         panelSearch = findViewById(R.id.panel_search)
         panelLibrary = findViewById(R.id.panel_library)
+        panelDownloads = findViewById(R.id.panel_downloads)
         resultsList = findViewById(R.id.results)
         libraryList = findViewById(R.id.library)
+        downloadsList = findViewById(R.id.downloads)
         searchLoading = findViewById(R.id.search_loading)
         statusText = findViewById(R.id.status)
         mini = findViewById(R.id.mini)
@@ -129,10 +144,16 @@ class MainActivity : Activity() {
             onDownload = null,
         )
         libraryList.adapter = libAdapter
+        downloadsAdapter = TrackRowAdapter(this, mutableListOf(), onTap = {}, onDownload = null)
+        downloadsList.adapter = downloadsAdapter
 
         searchButton.setOnClickListener { doSearch() }
-        tabSearch.setOnClickListener { setTab(false) }
-        tabLibrary.setOnClickListener { setTab(true) }
+        tabSearch.setOnClickListener { setTab(TAB_SEARCH) }
+        tabLibrary.setOnClickListener { setTab(TAB_LIBRARY) }
+        tabDownloads.setOnClickListener { setTab(TAB_DOWNLOADS) }
+        tabPlayer.setOnClickListener {
+            startActivity(Intent(this, PlayerActivity::class.java))
+        }
         mini.setOnClickListener {
             startActivity(Intent(this, PlayerActivity::class.java))
         }
@@ -153,7 +174,7 @@ class MainActivity : Activity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 4002)
         }
 
-        setTab(false)
+        setTab(TAB_SEARCH)
         ui.post(miniLoop)
     }
 
@@ -163,19 +184,21 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    private fun setTab(lib: Boolean) {
-        onLibrary = lib
-        panelSearch.visibility = if (lib) View.GONE else View.VISIBLE
-        panelLibrary.visibility = if (lib) View.VISIBLE else View.GONE
-        val green = getColor(R.color.green)
-        val dark = getColor(R.color.surface2)
-        val black = getColor(android.R.color.black)
-        val white = getColor(R.color.white)
-        tabSearch.setBackgroundColor(if (lib) dark else green)
-        tabSearch.setTextColor(if (lib) white else black)
-        tabLibrary.setBackgroundColor(if (lib) green else dark)
-        tabLibrary.setTextColor(if (lib) black else white)
-        if (lib) loadLibrary()
+    private fun setTab(t: Int) {
+        tab = t
+        panelSearch.visibility = if (t == TAB_SEARCH) View.VISIBLE else View.GONE
+        panelLibrary.visibility = if (t == TAB_LIBRARY) View.VISIBLE else View.GONE
+        panelDownloads.visibility = if (t == TAB_DOWNLOADS) View.VISIBLE else View.GONE
+        paintTab(tabSearch, t == TAB_SEARCH)
+        paintTab(tabLibrary, t == TAB_LIBRARY)
+        paintTab(tabDownloads, t == TAB_DOWNLOADS)
+        if (t == TAB_LIBRARY) loadLibrary()
+        if (t == TAB_DOWNLOADS) refreshDownloads()
+    }
+
+    private fun paintTab(b: Button, selected: Boolean) {
+        b.setBackgroundColor(getColor(if (selected) R.color.green else R.color.surface2))
+        b.setTextColor(getColor(if (selected) android.R.color.black else R.color.white))
     }
 
     // ---- busqueda ----
@@ -362,41 +385,17 @@ class MainActivity : Activity() {
                     .take(6)
                 if (audios.isEmpty()) throw Exception("Sin streams de audio")
                 val title = item.name ?: "audio"
-                runOnUiThread { pickFormatDialog(title, audios) }
-            } catch (e: Exception) {
-                runOnUiThread { statusText.text = "Error: ${e.message}" }
-            } finally {
-                runOnUiThread { searchButton.isEnabled = true }
-            }
-        }.start()
-    }
-
-    private fun pickFormatDialog(title: String, audios: List<AudioStream>) {
-        val labels = audios.map {
-            "${it.format?.name ?: "?"} • ${it.averageBitrate / 1000} kbps"
-        }.toTypedArray()
-        var elegido = 0
-        AlertDialog.Builder(this)
-            .setTitle("Descargar audio")
-            .setSingleChoiceItems(labels, 0) { _, which -> elegido = which }
-            .setPositiveButton("Descargar") { _, _ -> doDownload(title, audios[elegido]) }
-            .setNegativeButton("Cancelar", null)
-            .show()
-    }
-
-    private fun doDownload(title: String, audio: AudioStream) {
-        searchButton.isEnabled = false
-        statusText.text = "Descargando: $title"
-        Thread {
-            try {
-                val streamUrl = audio.url ?: throw Exception("Stream sin URL directa")
-                val ruta = MusicDownload.download(
-                    this, streamUrl, title, audio.format?.suffix ?: "m4a"
-                ) { }
                 runOnUiThread {
-                    statusText.text = "Guardado en $ruta"
-                    Toast.makeText(this, "Descarga completa", Toast.LENGTH_SHORT).show()
-                    if (onLibrary) loadLibrary()
+                    FormatPicker.show(this, title, audios) { chosen, fellBack ->
+                        if (fellBack) {
+                            Toast.makeText(
+                                this,
+                                "Sin MP3 en YouTube, guardo en ${chosen.format?.suffix ?: "original"}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        doDownload(title, chosen)
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread { statusText.text = "Error: ${e.message}" }
@@ -404,5 +403,44 @@ class MainActivity : Activity() {
                 runOnUiThread { searchButton.isEnabled = true }
             }
         }.start()
+    }
+
+    private fun doDownload(title: String, audio: AudioStream) {
+        searchButton.isEnabled = false
+        statusText.text = "Descargando: $title"
+        val jobId = DownloadStore.start(title)
+        Thread {
+            try {
+                val streamUrl = audio.url ?: throw Exception("Stream sin URL directa")
+                val ruta = MusicDownload.download(
+                    this, streamUrl, title, audio.format?.suffix ?: "m4a"
+                ) { p -> DownloadStore.progress(jobId, p) }
+                DownloadStore.finish(jobId, ruta)
+                runOnUiThread {
+                    statusText.text = "Guardado en $ruta"
+                    Toast.makeText(this, "Descarga completa", Toast.LENGTH_SHORT).show()
+                    if (tab == TAB_LIBRARY) loadLibrary()
+                    if (tab == TAB_DOWNLOADS) refreshDownloads()
+                }
+            } catch (e: Exception) {
+                DownloadStore.fail(jobId, e.message ?: "error")
+                runOnUiThread { statusText.text = "Error: ${e.message}" }
+            } finally {
+                runOnUiThread { searchButton.isEnabled = true }
+            }
+        }.start()
+    }
+
+    // ---- descargas ----
+
+    private fun refreshDownloads() {
+        downloadsAdapter.refresh(DownloadStore.snapshot().map {
+            val sub = when (it.state) {
+                DownloadStore.State.ACTIVE -> "${it.progress}% • descargando"
+                DownloadStore.State.DONE -> "listo • ${it.detail}"
+                DownloadStore.State.ERROR -> "error • ${it.detail}"
+            }
+            TrackRowAdapter.Row(it.title, sub, null, false)
+        })
     }
 }

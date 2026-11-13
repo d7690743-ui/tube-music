@@ -25,15 +25,35 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Buscar" />
+            android:text="Buscar"
+            android:textSize="12sp" />
 
         <Button
             android:id="@+id/tab_library"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="4dp"
             android:layout_weight="1"
-            android:text="Biblioteca" />
+            android:text="Biblioteca"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/tab_downloads"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:text="Descargas"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/tab_player"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:text="Reproductor"
+            android:textSize="12sp" />
 
     </LinearLayout>
 
@@ -97,6 +117,32 @@
 
         <ListView
             android:id="@+id/library"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:divider="@color/surface2"
+            android:dividerHeight="1dp" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/panel_downloads"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Progreso y recientes de esta sesión"
+            android:textColor="@color/gray"
+            android:textSize="13sp" />
+
+        <ListView
+            android:id="@+id/downloads"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"

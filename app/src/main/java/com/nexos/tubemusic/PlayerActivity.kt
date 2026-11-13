@@ -14,6 +14,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.stream.AudioStream
 
 /** Reproductor completo estilo Spotify: caratula, seek, controles y descarga. */
 class PlayerActivity : Activity() {
@@ -123,26 +124,57 @@ class PlayerActivity : Activity() {
         val url = PlayerBus.pageUrl ?: return
         val title = PlayerBus.title
         downloadButton.isEnabled = false
-        Toast.makeText(this, "Descargando mejor calidad...", Toast.LENGTH_SHORT).show()
         Thread {
             try {
                 TubeSession.ensure()
                 val ex = ServiceList.YouTube.getStreamExtractor(url)
                 ex.fetchPage()
-                val best = ex.audioStreams
+                val audios = ex.audioStreams
                     .filter { it.isUrl && it.url != null }
-                    .maxByOrNull { it.averageBitrate }
-                    ?: throw Exception("Sin audio")
-                MusicDownload.download(
-                    this,
-                    best.url ?: throw Exception("Sin URL"),
-                    title,
-                    best.format?.suffix ?: "m4a"
-                ) { }
+                    .sortedByDescending { it.averageBitrate }
+                    .take(6)
+                if (audios.isEmpty()) throw Exception("Sin audio")
                 runOnUiThread {
-                    Toast.makeText(this, "Guardado en Music/TubeMusic", Toast.LENGTH_SHORT).show()
+                    FormatPicker.show(
+                        this, title, audios,
+                        onPick = { chosen, fellBack -> downloadPicked(title, chosen, fellBack) },
+                        onCancel = { downloadButton.isEnabled = true },
+                    )
                 }
             } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                    downloadButton.isEnabled = true
+                }
+            }
+        }.start()
+    }
+
+    private fun downloadPicked(title: String, audio: AudioStream, fellBack: Boolean) {
+        if (fellBack) {
+            Toast.makeText(
+                this,
+                "Sin MP3 en YouTube, guardo en ${audio.format?.suffix ?: "original"}",
+                Toast.LENGTH_LONG
+            ).show()
+        } else {
+            Toast.makeText(this, "Descargando...", Toast.LENGTH_SHORT).show()
+        }
+        val jobId = DownloadStore.start(title)
+        Thread {
+            try {
+                val ruta = MusicDownload.download(
+                    this,
+                    audio.url ?: throw Exception("Sin URL"),
+                    title,
+                    audio.format?.suffix ?: "m4a"
+                ) { p -> DownloadStore.progress(jobId, p) }
+                DownloadStore.finish(jobId, ruta)
+                runOnUiThread {
+                    Toast.makeText(this, "Guardado en $ruta", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                DownloadStore.fail(jobId, e.message ?: "error")
                 runOnUiThread {
                     Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                 }
