@@ -121,6 +121,7 @@ class MainActivity : Activity() {
                 val extractor = ServiceList.YouTube.getStreamExtractor(item.url)
                 extractor.fetchPage()
                 val audios = extractor.audioStreams
+                    .filter { it.isUrl && it.url != null }
                     .sortedByDescending { it.averageBitrate }
                     .take(6)
                 if (audios.isEmpty()) throw Exception("Sin streams de audio")
@@ -152,8 +153,9 @@ class MainActivity : Activity() {
         statusText.text = "Descargando: $title"
         Thread {
             try {
+                val streamUrl = audio.url ?: throw Exception("Stream sin URL directa")
                 val ruta = MusicDownload.download(
-                    this, audio.url, title, audio.format?.suffix ?: "m4a"
+                    this, streamUrl, title, audio.format?.suffix ?: "m4a"
                 ) { p -> runOnUiThread { progressBar.progress = p } }
                 runOnUiThread {
                     statusText.text = "Guardado en $ruta"
