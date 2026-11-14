@@ -64,17 +64,36 @@
         android:layout_weight="1"
         android:orientation="vertical">
 
-        <EditText
-            android:id="@+id/query"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:backgroundTint="@color/gray"
-            android:hint="Cancion o artista..."
-            android:inputType="text"
-            android:singleLine="true"
-            android:textColor="@color/white"
-            android:textColorHint="@color/gray" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/query"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:backgroundTint="@color/gray"
+                android:hint="Cancion o artista..."
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:singleLine="true"
+                android:textColor="@color/white"
+                android:textColorHint="@color/gray" />
+
+            <ImageButton
+                android:id="@+id/clear"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?android:attr/selectableItemBackground"
+                android:contentDescription="Limpiar búsqueda"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                android:tint="@color/gray" />
+
+        </LinearLayout>
 
         <Button
             android:id="@+id/search"
@@ -82,11 +101,33 @@
             android:layout_height="wrap_content"
             android:text="Buscar" />
 
+        <HorizontalScrollView
+            android:id="@+id/history_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/history_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+
+        </HorizontalScrollView>
+
         <ProgressBar
             android:id="@+id/search_loading"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/retry"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="Reintentar"
             android:visibility="gone" />
 
         <ListView
@@ -96,6 +137,13 @@
             android:layout_weight="1"
             android:divider="@color/surface2"
             android:dividerHeight="1dp" />
+
+        <Button
+            android:id="@+id/more"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Más resultados"
+            android:visibility="gone" />
 
     </LinearLayout>
 

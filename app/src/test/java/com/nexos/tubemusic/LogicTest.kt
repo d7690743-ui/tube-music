@@ -121,4 +121,30 @@ class LogicTest {
         assertEquals("convirtiendo a MP3", jobs[0].detail)
         assertEquals(DownloadStore.State.ACTIVE, jobs[0].state)
     }
+
+    @Test
+    fun history_pushAgregaAlFrente() {
+        assertEquals(listOf("b", "a"), SearchHistory.push(listOf("a"), "b"))
+    }
+
+    @Test
+    fun history_pushMueveDuplicadoAlFrente() {
+        assertEquals(listOf("A", "b"), SearchHistory.push(listOf("b", "a"), "A"))
+    }
+
+    @Test
+    fun history_pushLimitaDiezEIgronaVacio() {
+        val h = (1..12).map { "q$it" }
+        val out = SearchHistory.push(h, "nueva")
+        assertEquals(10, out.size)
+        assertEquals("nueva", out[0])
+        assertEquals(h, SearchHistory.push(h, "   "))
+    }
+
+    @Test
+    fun history_serializaYLee() {
+        val h = listOf("rock", "salsa dura")
+        assertEquals(h, SearchHistory.parse(SearchHistory.serialize(h)))
+        assertEquals(emptyList<String>(), SearchHistory.parse(""))
+    }
 }

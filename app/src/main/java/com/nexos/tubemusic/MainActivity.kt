@@ -14,8 +14,11 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.AdapterView
 import android.widget.BaseAdapter
 import android.widget.Button
@@ -27,7 +30,9 @@ import android.widget.ListView
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.search.SearchExtractor
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.io.File
@@ -69,6 +74,11 @@ class MainActivity : Activity() {
 
     private lateinit var queryEdit: EditText
     private lateinit var searchButton: Button
+    private lateinit var clearButton: ImageButton
+    private lateinit var historyScroll: View
+    private lateinit var historyRow: LinearLayout
+    private lateinit var moreButton: Button
+    private lateinit var retryButton: Button
     private lateinit var tabSearch: Button
     private lateinit var tabLibrary: Button
     private lateinit var tabDownloads: Button
@@ -89,6 +99,9 @@ class MainActivity : Activity() {
 
     private val items = mutableListOf<StreamInfoItem>()
     private lateinit var resultsAdapter: TrackRowAdapter
+    private var history: List<String> = emptyList()
+    private var searchExtractor: SearchExtractor? = null
+    private var searchNextPage: Page? = null
     private val libTracks = mutableListOf<Track>()
     private lateinit var libAdapter: TrackRowAdapter
     private lateinit var downloadsAdapter: TrackRowAdapter
@@ -117,6 +130,11 @@ class MainActivity : Activity() {
 
         queryEdit = findViewById(R.id.query)
         searchButton = findViewById(R.id.search)
+        clearButton = findViewById(R.id.clear)
+        historyScroll = findViewById(R.id.history_scroll)
+        historyRow = findViewById(R.id.history_row)
+        moreButton = findViewById(R.id.more)
+        retryButton = findViewById(R.id.retry)
         tabSearch = findViewById(R.id.tab_search)
         tabLibrary = findViewById(R.id.tab_library)
         tabDownloads = findViewById(R.id.tab_downloads)
@@ -156,6 +174,21 @@ class MainActivity : Activity() {
         downloadsList.adapter = downloadsAdapter
 
         searchButton.setOnClickListener { doSearch() }
+        clearButton.setOnClickListener { clearSearch() }
+        retryButton.setOnClickListener { doSearch() }
+        moreButton.setOnClickListener { doMore() }
+        queryEdit.setOnEditorActionListener { _, actionId, event ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH ||
+                event?.keyCode == KeyEvent.KEYCODE_ENTER
+            ) {
+                doSearch()
+                true
+            } else false
+        }
+        history = SearchHistory.parse(
+            getSharedPreferences("tubemusic", MODE_PRIVATE).getString("history", "") ?: ""
+        )
+        refreshHistory()
         tabSearch.setOnClickListener { setTab(TAB_SEARCH) }
         tabLibrary.setOnClickListener { setTab(TAB_LIBRARY) }
         tabDownloads.setOnClickListener { setTab(TAB_DOWNLOADS) }
@@ -217,6 +250,12 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Escribe al menos 2 letras", Toast.LENGTH_SHORT).show()
             return
         }
+        (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
+            .hideSoftInputFromWindow(queryEdit.windowToken, 0)
+        history = SearchHistory.push(history, q)
+        saveHistory()
+        refreshHistory()
+        retryButton.visibility = View.GONE
         searchButton.isEnabled = false
         searchLoading.visibility = View.VISIBLE
         statusText.text = "Buscando..."
@@ -225,26 +264,27 @@ class MainActivity : Activity() {
                 TubeSession.ensure()
                 val extractor = ServiceList.YouTube.getSearchExtractor(q)
                 extractor.fetchPage()
-                val found = extractor.initialPage.items.filterIsInstance<StreamInfoItem>()
+                val first = extractor.initialPage
+                val found = first.items.filterIsInstance<StreamInfoItem>()
+                searchExtractor = extractor
+                searchNextPage = first.nextPage
                 runOnUiThread {
                     items.clear()
                     items.addAll(found)
-                    resultsAdapter.refresh(found.map {
-                        TrackRowAdapter.Row(
-                            title = it.name ?: "Sin título",
-                            sub = "${it.uploaderName ?: "?"} • ${fmtDurSec(it.duration)}",
-                            thumb = it.thumbnails.firstOrNull()?.url,
-                            showDl = true,
-                        )
-                    })
+                    resultsAdapter.refresh(found.map { toRow(it) })
                     statusText.text = if (found.isEmpty()) {
                         "Sin resultados."
                     } else {
                         "${found.size} resultados. Toca para reproducir, ⬇ para descargar."
                     }
+                    updateMoreButton()
+                    refreshHistory()
                 }
             } catch (e: Exception) {
-                runOnUiThread { statusText.text = "Error: ${e.message}" }
+                runOnUiThread {
+                    statusText.text = "Error: ${e.message}"
+                    retryButton.visibility = View.VISIBLE
+                }
             } finally {
                 runOnUiThread {
                     searchButton.isEnabled = true
@@ -252,6 +292,82 @@ class MainActivity : Activity() {
                 }
             }
         }.start()
+    }
+
+    private fun doMore() {
+        val ex = searchExtractor ?: return
+        val page = searchNextPage ?: return
+        moreButton.isEnabled = false
+        retryButton.visibility = View.GONE
+        statusText.text = "Cargando más..."
+        Thread {
+            try {
+                val p = ex.getPage(page)
+                val more = p.items.filterIsInstance<StreamInfoItem>()
+                searchNextPage = p.nextPage
+                runOnUiThread {
+                    items.addAll(more)
+                    resultsAdapter.refresh(items.map { toRow(it) })
+                    statusText.text = "${items.size} resultados."
+                    updateMoreButton()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    statusText.text = "Error: ${e.message}"
+                    retryButton.visibility = View.VISIBLE
+                    moreButton.isEnabled = true
+                }
+            }
+        }.start()
+    }
+
+    private fun toRow(it: StreamInfoItem) = TrackRowAdapter.Row(
+        title = it.name ?: "Sin título",
+        sub = "${it.uploaderName ?: "?"} • ${fmtDurSec(it.duration)}",
+        thumb = it.thumbnails.firstOrNull()?.url,
+        showDl = true,
+    )
+
+    private fun updateMoreButton() {
+        val show = searchNextPage != null && items.isNotEmpty()
+        moreButton.visibility = if (show) View.VISIBLE else View.GONE
+        moreButton.isEnabled = true
+    }
+
+    private fun clearSearch() {
+        queryEdit.setText("")
+        items.clear()
+        resultsAdapter.refresh(emptyList())
+        searchExtractor = null
+        searchNextPage = null
+        retryButton.visibility = View.GONE
+        updateMoreButton()
+        statusText.text = "Busca una canción para empezar."
+        refreshHistory()
+        queryEdit.requestFocus()
+    }
+
+    private fun saveHistory() {
+        getSharedPreferences("tubemusic", MODE_PRIVATE).edit()
+            .putString("history", SearchHistory.serialize(history))
+            .apply()
+    }
+
+    private fun refreshHistory() {
+        historyRow.removeAllViews()
+        for (q in history) {
+            val b = Button(this)
+            b.text = q
+            b.textSize = 12f
+            b.setOnClickListener {
+                queryEdit.setText(q)
+                queryEdit.setSelection(q.length)
+                doSearch()
+            }
+            historyRow.addView(b)
+        }
+        val show = history.isNotEmpty() && items.isEmpty()
+        historyScroll.visibility = if (show) View.VISIBLE else View.GONE
     }
 
     private fun playSearchList(pos: Int) {
