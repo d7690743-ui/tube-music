@@ -113,6 +113,22 @@ class LogicTest {
     }
 
     @Test
+    fun uniqueName_sinColisionDevuelveIgual() {
+        assertEquals("rola.mp3", MusicDownload.uniqueName("rola.mp3") { false })
+    }
+
+    @Test
+    fun uniqueName_colisionAgregaNumero() {
+        val taken = setOf("rola.mp3", "rola (2).mp3")
+        assertEquals("rola (3).mp3", MusicDownload.uniqueName("rola.mp3") { it in taken })
+    }
+
+    @Test
+    fun uniqueName_sinExtension() {
+        assertEquals("audio (2)", MusicDownload.uniqueName("audio") { it != "audio (2)" })
+    }
+
+    @Test
     fun store_noteActualizaDetalle() {
         DownloadStore.clear()
         val id = DownloadStore.start("x")

@@ -93,8 +93,10 @@ object Mp3Convert {
     /** Guarda un MP3 ya convertido en Music/TubeMusic. Devuelve ruta visible. */
     @Throws(Exception::class)
     fun saveMp3(context: Context, mp3: File, title: String): String {
-        val name = mp3Name(title)
+        val wanted = mp3Name(title)
         if (Build.VERSION.SDK_INT >= 29) {
+            val taken = MusicDownload.existingLibraryNames(context)
+            val name = MusicDownload.uniqueName(wanted) { it in taken }
             val values = ContentValues().apply {
                 put(MediaStore.Audio.Media.DISPLAY_NAME, name)
                 put(MediaStore.Audio.Media.MIME_TYPE, "audio/mpeg")
@@ -119,6 +121,7 @@ object Mp3Convert {
                 "TubeMusic",
             )
             if (!dir.exists()) dir.mkdirs()
+            val name = MusicDownload.uniqueName(wanted) { File(dir, it).exists() }
             mp3.copyTo(File(dir, name), overwrite = true)
             return File(dir, name).absolutePath
         }

@@ -19,6 +19,42 @@ object MusicDownload {
     fun sanitize(name: String): String =
         name.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().take(120).ifEmpty { "audio" }
 
+    /**
+     * Nombre libre a partir de [base]: si ya existe, prueba "nombre (2).ext",
+     * "nombre (3).ext"... Lógica pura: probada en LogicTest.
+     */
+    fun uniqueName(base: String, exists: (String) -> Boolean): String {
+        if (!exists(base)) return base
+        val dot = base.lastIndexOf('.')
+        val stem = if (dot > 0) base.substring(0, dot) else base
+        val ext = if (dot > 0) base.substring(dot) else ""
+        var n = 2
+        while (true) {
+            val cand = "$stem ($n)$ext"
+            if (!exists(cand)) return cand
+            n++
+        }
+    }
+
+    /** Nombres ya ocupados en Music/TubeMusic (API 29+). Vacío si falla la consulta. */
+    fun existingLibraryNames(context: Context): Set<String> {
+        val out = mutableSetOf<String>()
+        try {
+            context.contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Audio.Media.DISPLAY_NAME),
+                MediaStore.Audio.Media.RELATIVE_PATH + " LIKE ?",
+                arrayOf("Music/TubeMusic%"),
+                null
+            )?.use { c ->
+                val i = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+                while (c.moveToNext()) c.getString(i)?.let { out.add(it) }
+            }
+        } catch (_: Exception) {
+        }
+        return out
+    }
+
     @Throws(Exception::class)
     fun download(
         context: Context,
@@ -27,7 +63,7 @@ object MusicDownload {
         suffix: String,
         onProgress: (Int) -> Unit,
     ): String {
-        val name = sanitize(title) + "." + suffix.lowercase()
+        val wanted = sanitize(title) + "." + suffix.lowercase()
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 60_000
@@ -38,6 +74,8 @@ object MusicDownload {
             if (conn.responseCode !in 200..299) throw Exception("HTTP ${conn.responseCode}")
             val total = conn.contentLengthLong
             if (Build.VERSION.SDK_INT >= 29) {
+                val taken = existingLibraryNames(context)
+                val name = uniqueName(wanted) { it in taken }
                 val values = ContentValues().apply {
                     put(MediaStore.Audio.Media.DISPLAY_NAME, name)
                     put(MediaStore.Audio.Media.MIME_TYPE, mime(suffix))
@@ -62,6 +100,7 @@ object MusicDownload {
                     "TubeMusic",
                 )
                 if (!dir.exists()) dir.mkdirs()
+                val name = uniqueName(wanted) { File(dir, it).exists() }
                 val dest = File(dir, name)
                 FileOutputStream(dest).use { out ->
                     conn.inputStream.use { input -> copy(input, out, total, onProgress) }
